@@ -1,0 +1,1 @@
+C:\local\bin\java\jdk1.7.0_21\bin\javac.exe -g:none  -d ..\resources -classpath ..\..\..\target\cdi-spring-javaconfiguration-0.1.0-SNAPSHOT.jar:..\..\..\target\cdi-spring-javaconfiguration-0.1.0-SNAPSHOT-tests.jar com\github\marschall\cdispringjavaconfig\SampleConfigurationSubclass.java
