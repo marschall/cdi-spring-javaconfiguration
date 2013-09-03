@@ -9,11 +9,33 @@
   <version>0.1.0-SNAPSHOT</version>
   <name>CDI Spring Java Configuration</name>
   <description>Supports CDI Bean definitions in Spring Java Configurations</description>
+  
+  <developers>
+    <developer>
+      <id>marschall</id>
+      <name>Philippe Marschall</name>
+      <email>philippe.marschall@gmail.com</email>
+      <timezone>+1</timezone>
+      <url>https://github.com/marschall</url>
+      <roles>
+        <role>developer</role>
+      </roles>
+    </developer>
+  </developers>
+  
+  <licenses>
+    <license>
+      <name>MIT</name>
+      <url>http://opensource.org/licenses/MIT</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
 
   <dependencies>
     <dependency>
       <groupId>javax.enterprise</groupId>
       <artifactId>cdi-api</artifactId>
+      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
@@ -42,10 +64,6 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-
-  <properties>
-    <spring.version>3.2.4.RELEASE</spring.version>
-  </properties>
   
   <build>
     <plugins>
@@ -54,8 +72,10 @@
         <configuration>
           <source>1.7</source>
           <target>1.7</target>
+          <!-- 
           <debug>false</debug>
           <debuglevel>none</debuglevel>
+           -->
         </configuration>
       </plugin>
       <plugin>
@@ -94,5 +114,9 @@
       </dependency>
     </dependencies>
   </dependencyManagement>
+
+  <properties>
+    <spring.version>3.2.4.RELEASE</spring.version>
+  </properties>
 
 </project>
