@@ -17,6 +17,7 @@ import javax.enterprise.event.Observes;
 import javax.enterprise.inject.Any;
 import javax.enterprise.inject.CreationException;
 import javax.enterprise.inject.Default;
+import javax.enterprise.inject.InjectionException;
 import javax.enterprise.inject.spi.AfterBeanDiscovery;
 import javax.enterprise.inject.spi.Annotated;
 import javax.enterprise.inject.spi.AnnotatedType;
@@ -29,6 +30,8 @@ import javax.enterprise.inject.spi.ProcessAnnotatedType;
 import javax.enterprise.inject.spi.ProcessInjectionTarget;
 import javax.enterprise.util.AnnotationLiteral;
 
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowire;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Import;
@@ -47,11 +50,6 @@ import org.springframework.context.annotation.Profile;
 public class CdiSpringExtension implements Extension {
   // http://docs.jboss.org/weld/reference/latest/en-US/html/extend.html
   // http://jaxenter.com/tutorial-cdi-extension-programming-42972.html
-
-  //TODO
-  //org.springframework.beans.factory.InitializingBean
-  // TODO factory bean
-
 
   private Class<?>[] configurationClasses;
 
@@ -139,7 +137,7 @@ public class CdiSpringExtension implements Extension {
   private Bean<?> addBeanMethod(final Class<?> configurationClass, final Method method, AfterBeanDiscovery abd, final BeanManager bm) {
     int modifiers = method.getModifiers();
     if (Modifier.isStatic(modifiers)) {
-      // TODO throw exception
+      throw new InjectionException("static method: " + method + " not supported");
     }
     // TODO lazy?
     boolean isLazy = method.getAnnotation(Lazy.class) != null;
@@ -215,20 +213,69 @@ public class CdiSpringExtension implements Extension {
         Bean<?> bean = getRequiredBean(bm, configurationClass);
         Object configuration = bm.getReference(bean, configurationClass, ctx);
         // TODO inject parameters
+        // TODO null?
+        Object springBean;
         try {
-          return method.invoke(configuration);
+          springBean = method.invoke(configuration);
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
           throw new CreationException("could not create bean for: " + method, e);
         }
+        // TODO factory bean
+        if (springBean instanceof InitializingBean) {
+          try {
+            ((InitializingBean) springBean).afterPropertiesSet();
+          } catch (Exception e) {
+            throw new CreationException("could initialize bean: " + springBean + " for: " + method, e);
+          }
+        }
+        callMethod(getInitMethod(), springBean);
+        it.postConstruct(springBean);
+        return springBean;
+      }
+      
+      private void callMethod(String methodName, Object springBean) {
+        if (!methodName.isEmpty()) {
+          try {
+            springBean.getClass().getMethod(methodName).invoke(springBean);
+          } catch (ReflectiveOperationException | IllegalArgumentException e) {
+            throw new CreationException("could call:" + methodName + " on: " + springBean + " for: " + method, e);
+          }
+        }
+      }
+      
+      private boolean isAutowire() {
+        return getBeanAnnotation().autowire() != Autowire.NO;
+      }
+      
+      private String getInitMethod() {
+        return defaultString(getBeanAnnotation().initMethod());
+      }
+      
+      private String getDestroyMethod() {
+        return defaultString(getBeanAnnotation().destroyMethod());
+      }
+      
+      private org.springframework.context.annotation.Bean getBeanAnnotation() {
+        return method.getAnnotation(org.springframework.context.annotation.Bean.class);
       }
 
       @Override
-      public void destroy(Object instance, CreationalContext<Object> ctx) {
-        it.preDestroy(instance);
-        it.dispose(instance);
+      public void destroy(Object springBean, CreationalContext<Object> ctx) {
+        it.preDestroy(springBean);
+        String destroyMethod = getDestroyMethod();
+        if (destroyMethod.isEmpty()) {
+          // TODO close magic
+        } else {
+          callMethod(destroyMethod, springBean);
+        }
+        it.dispose(springBean);
         ctx.release();
       }
     };
+  }
+  
+  static String defaultString(String s) {
+    return s == null ? "" : s;
   }
 
   private static Bean<?> getRequiredBean(BeanManager bm, Type type, Annotation... qualifiers) {
