@@ -27,3 +27,6 @@ You have a large EAR with several EJB-JARs and want to avoid having to create an
 ### What should I use instead?
 WAR deployment
 
+### There is a class checked in
+Yes, this is used for byte code reverse engineering.
+
