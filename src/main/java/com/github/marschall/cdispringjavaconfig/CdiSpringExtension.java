@@ -32,6 +32,7 @@ import javax.enterprise.util.AnnotationLiteral;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 
@@ -97,6 +98,12 @@ public class CdiSpringExtension implements Extension {
       // configuration already registered
       return;
     }
+    
+    ImportResource importResource = configurationClass.getAnnotation(ImportResource.class);
+    if (importResource != null) {
+      throw new CreationException("@" + ImportResource.class.getSimpleName() + " on " + configurationClass + " not supported");
+    }
+    
     Import importAnnotation = configurationClass.getAnnotation(Import.class);
     for (Class<?> importedClass : importAnnotation.value()) {
       buildConfiguraion(importedClass, abd, bm);
