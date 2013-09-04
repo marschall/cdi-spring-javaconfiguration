@@ -35,6 +35,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Profile;
 
 /**
  * The actual CDI extension implementation.
@@ -99,10 +100,8 @@ public class CdiSpringExtension implements Extension {
       return;
     }
     
-    ImportResource importResource = configurationClass.getAnnotation(ImportResource.class);
-    if (importResource != null) {
-      throw new CreationException("@" + ImportResource.class.getSimpleName() + " on " + configurationClass + " not supported");
-    }
+    validateAnnotationNotPresent(configurationClass, ImportResource.class);
+    validateAnnotationNotPresent(configurationClass, Profile.class);
     
     Import importAnnotation = configurationClass.getAnnotation(Import.class);
     for (Class<?> importedClass : importAnnotation.value()) {
@@ -111,13 +110,20 @@ public class CdiSpringExtension implements Extension {
 
     AnnotatedType<?> at = bm.createAnnotatedType(configurationClass);
     //use this to instantiate the class and inject dependencies
-    final InjectionTarget<Object> it = (InjectionTarget<Object>) bm.createInjectionTarget(at);
+    InjectionTarget<Object> it = (InjectionTarget<Object>) bm.createInjectionTarget(at);
 
 
     abd.addBean(buildConfigurationBean(configurationClass, it));
 
     addBeanMethods(configurationClass, abd, bm);
 
+  }
+
+  void validateAnnotationNotPresent(final Class<?> configurationClass, Class<? extends Annotation> annotationClass) {
+    Annotation annotation = configurationClass.getAnnotation(annotationClass);
+    if (annotation != null) {
+      throw new CreationException("@" + annotationClass.getSimpleName() + " on " + configurationClass + " not supported");
+    }
   }
 
   private void addBeanMethods(Class<?> configurationClass, AfterBeanDiscovery abd, BeanManager bm) {
@@ -172,11 +178,7 @@ public class CdiSpringExtension implements Extension {
         } else if (primary == null && qualifier != null) {
           return Collections.singleton(qualifier);
         } else {
-          // TODO optimize
-          Set<Annotation> qualifiers = new HashSet<>(2);
-          qualifiers.add(qualifier);
-          qualifiers.add(primary);
-          return qualifiers;
+          return new TwoElementSet<>(qualifier, primary);
         }
       }
 
