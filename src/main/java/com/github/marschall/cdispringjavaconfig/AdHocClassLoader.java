@@ -2,6 +2,7 @@ package com.github.marschall.cdispringjavaconfig;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.security.ProtectionDomain;
 import java.util.Map;
 
 /**
@@ -10,6 +11,11 @@ import java.util.Map;
  * We dynamically generate subclasses of configuration classes we can't put
  * them into existing class loaders so we have to put them into custom class
  * loaders.
+ * <p>
+ * Spring does not create custom class loaders instead it calls
+ * {@link java.lang.ClassLoader#defineClass(String, byte[], int, int, ProtectionDomain)}
+ * using reflection which is dirty and in addition the ".class" resource is not
+ * available through {@link java.lang.ClassLoader.getResource(String)}.
  */
 class AdHocClassLoader extends ClassLoader {
 
