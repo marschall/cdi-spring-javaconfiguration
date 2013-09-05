@@ -20,7 +20,6 @@ import javax.enterprise.inject.CreationException;
 import javax.enterprise.inject.Default;
 import javax.enterprise.inject.InjectionException;
 import javax.enterprise.inject.spi.AfterBeanDiscovery;
-import javax.enterprise.inject.spi.Annotated;
 import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
@@ -28,9 +27,9 @@ import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.InjectionPoint;
 import javax.enterprise.inject.spi.InjectionTarget;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
-import javax.enterprise.inject.spi.ProcessInjectionTarget;
 import javax.enterprise.util.AnnotationLiteral;
 
+import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowire;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,27 +66,6 @@ public class CdiSpringExtension implements Extension {
   public void afterBeanDiscovery(@Observes AfterBeanDiscovery abd, BeanManager bm) {
     for (Class<?> configurationClass : this.configurationClasses) {
       this.buildConfiguraion(configurationClass, abd, bm);
-    }
-  }
-
-  public void processInjectionTarget (@Observes ProcessInjectionTarget<?> pit, BeanManager bm) {
-    InjectionTarget<?> it = pit.getInjectionTarget();
-    for (InjectionPoint ip : it.getInjectionPoints()) {
-      Annotated annotated = ip.getAnnotated();
-      Autowired autowired = annotated.getAnnotation(Autowired.class);
-
-      // TODO qualifiers
-      Bean<?> bean;
-      if (autowired.required()) {
-        bean = getRequiredBean(bm, getClass());
-      } else {
-        bean = getBean(bm, getClass());
-
-      }
-      if (bean != null) {
-        // TODO
-        // pit.getInjectionTarget().;
-      }
     }
   }
 
@@ -149,6 +127,8 @@ public class CdiSpringExtension implements Extension {
     final InjectionTarget<Object> it = bm.createInjectionTarget(at);
 
     return new Bean<Object>() {
+
+      private org.springframework.context.annotation.Bean beanAnnotation;
 
       @Override
       public Class<?> getBeanClass() {
@@ -220,7 +200,26 @@ public class CdiSpringExtension implements Extension {
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
           throw new CreationException("could not create bean for: " + method, e);
         }
-        // TODO factory bean
+        if (isAutowire()) {
+          // TODO name vs type?
+          autowire(springBean, ctx, bm);
+        }
+        callMethod(getInitMethod(), springBean);
+        it.postConstruct(springBean);
+        if (springBean instanceof FactoryBean) {
+          try {
+            springBean = ((FactoryBean<?>) springBean).getObject();
+          } catch (Exception e) {
+            throw new CreationException("could not create bean", e);
+          }
+          initialize(springBean);
+          it.postConstruct(springBean);
+        }
+        
+        return springBean;
+      }
+      
+      private void initialize(Object springBean) {
         if (springBean instanceof InitializingBean) {
           try {
             ((InitializingBean) springBean).afterPropertiesSet();
@@ -228,13 +227,6 @@ public class CdiSpringExtension implements Extension {
             throw new CreationException("could initialize bean: " + springBean + " for: " + method, e);
           }
         }
-        if (isAutowire()) {
-          // TODO name vs type?
-          autowire(springBean, ctx, bm);
-        }
-        callMethod(getInitMethod(), springBean);
-        it.postConstruct(springBean);
-        return springBean;
       }
       
       private void callMethod(String methodName, Object springBean) {
@@ -248,7 +240,6 @@ public class CdiSpringExtension implements Extension {
       }
       
       private boolean isAutowire() {
-        // TODO cache
         return getBeanAnnotation().autowire() != Autowire.NO;
       }
       
@@ -261,7 +252,10 @@ public class CdiSpringExtension implements Extension {
       }
       
       private org.springframework.context.annotation.Bean getBeanAnnotation() {
-        return method.getAnnotation(org.springframework.context.annotation.Bean.class);
+        if (this.beanAnnotation == null) {
+          this.beanAnnotation = method.getAnnotation(org.springframework.context.annotation.Bean.class);
+        }
+        return this.beanAnnotation;
       }
 
       @Override
@@ -284,9 +278,7 @@ public class CdiSpringExtension implements Extension {
   }
   
   private static Object getBean(BeanManager bm, Autowired autowired, Class<?> type) {
-
     // TODO qualifiers
-    Bean<?> bean;
     if (autowired.required()) {
       return getRequiredBean(bm, type);
     } else {
