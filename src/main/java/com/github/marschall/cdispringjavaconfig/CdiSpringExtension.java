@@ -51,6 +51,8 @@ public class CdiSpringExtension implements Extension {
   // http://docs.jboss.org/weld/reference/latest/en-US/html/extend.html
   // http://jaxenter.com/tutorial-cdi-extension-programming-42972.html
 
+  private static final Object[] EMPTY_ARRAY = new Object[0];
+  
   private Class<?>[] configurationClasses;
 
   public void loadConfiguration(@Observes ProcessAnnotatedType<?> pat, BeanManager beanManager) {
@@ -192,11 +194,11 @@ public class CdiSpringExtension implements Extension {
       public Object create(CreationalContext<Object> ctx) {
         Bean<?> bean = getRequiredBean(bm, configurationClass);
         Object configuration = bm.getReference(bean, configurationClass, ctx);
-        // TODO inject parameters
-        // TODO null?
+        Object[] parameters = getParameters();
         Object springBean;
         try {
-          springBean = method.invoke(configuration);
+          // TODO null?
+          springBean = method.invoke(configuration, parameters);
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
           throw new CreationException("could not create bean for: " + method, e);
         }
@@ -217,6 +219,23 @@ public class CdiSpringExtension implements Extension {
         }
         
         return springBean;
+      }
+
+      private Object[] getParameters() {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        Object[] parameters;
+        if (parameterTypes.length == 0) {
+          // common case
+          parameters = EMPTY_ARRAY;
+        } else {
+          parameters = new Object[parameterTypes.length];
+          for (int i = 0; i < parameterTypes.length; i++) {
+            // TODO qualifiers
+            parameters[i] = getRequiredBean(bm, parameterTypes[i]);
+            
+          }
+        }
+        return parameters;
       }
       
       private void initialize(Object springBean) {
