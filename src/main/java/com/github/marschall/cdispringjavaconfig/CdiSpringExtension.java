@@ -1,12 +1,15 @@
 package com.github.marschall.cdispringjavaconfig;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -52,6 +55,8 @@ public class CdiSpringExtension implements Extension {
   // http://jaxenter.com/tutorial-cdi-extension-programming-42972.html
 
   private static final Object[] EMPTY_ARRAY = new Object[0];
+  
+  private static final Annotation[] EMPTY_ANNOTATION_ARRAY = new Annotation[0];
   
   private Class<?>[] configurationClasses;
 
@@ -170,8 +175,12 @@ public class CdiSpringExtension implements Extension {
 
       @Override
       public Set<Class<? extends Annotation>> getStereotypes() {
-        // TODO find org.springframework.stereotype.Service
-        return null;
+        List<org.springframework.stereotype.Component> components = findAnnotations(method, org.springframework.stereotype.Component.class);
+        Set<Class<? extends Annotation>> stereotypes = new HashSet<>(components.size());
+        for (org.springframework.stereotype.Component component : components) {
+          stereotypes.add(component.annotationType());
+        }
+        return stereotypes;
       }
 
       @Override
@@ -181,8 +190,8 @@ public class CdiSpringExtension implements Extension {
 
       @Override
       public boolean isAlternative() {
-        // TODO qualifier?
-        return false;
+        org.springframework.beans.factory.annotation.Qualifier qualifier = findAnnotation(method, org.springframework.beans.factory.annotation.Qualifier.class);
+        return qualifier != null;
       }
 
       @Override
@@ -223,6 +232,7 @@ public class CdiSpringExtension implements Extension {
 
       private Object[] getParameters() {
         Class<?>[] parameterTypes = method.getParameterTypes();
+        Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         Object[] parameters;
         if (parameterTypes.length == 0) {
           // common case
@@ -230,8 +240,8 @@ public class CdiSpringExtension implements Extension {
         } else {
           parameters = new Object[parameterTypes.length];
           for (int i = 0; i < parameterTypes.length; i++) {
-            // TODO qualifiers
-            parameters[i] = getRequiredBean(bm, parameterTypes[i]);
+            Annotation[] parameterAnnotation = parameterAnnotations[i];
+            parameters[i] = getRequiredBean(bm, parameterTypes[i], findQualifiers(parameterAnnotation));
             
           }
         }
@@ -296,12 +306,19 @@ public class CdiSpringExtension implements Extension {
     return s == null ? "" : s;
   }
   
-  private static Object getBean(BeanManager bm, Autowired autowired, Class<?> type) {
-    // TODO qualifiers
+  private static Object getBean(BeanManager bm, Autowired autowired, Class<?> type, AccessibleObject annotationHolder) {
     if (autowired.required()) {
-      return getRequiredBean(bm, type);
+      return getRequiredBean(bm, type, findQualifiers(annotationHolder));
     } else {
-      return getBean(bm, type);
+      return getBean(bm, type, findQualifiers(annotationHolder));
+    }
+  }
+  
+  private static Object getBean(BeanManager bm, Autowired autowired, Class<?> type, Annotation[] qualifiers) {
+    if (autowired.required()) {
+      return getRequiredBean(bm, type, qualifiers);
+    } else {
+      return getBean(bm, type, qualifiers);
     }
   }
 
@@ -314,7 +331,7 @@ public class CdiSpringExtension implements Extension {
   }
 
   private static Bean<?> getBean(BeanManager bm, Type type, Annotation... qualifiers) {
-    Set<Bean<?>> beans = bm.getBeans(type);
+    Set<Bean<?>> beans = bm.getBeans(type, qualifiers);
     if (beans.isEmpty()) {
       return null;
     }
@@ -332,8 +349,8 @@ public class CdiSpringExtension implements Extension {
     return scope.value().equals(ConfigurableBeanFactory.SCOPE_SINGLETON);
   }
 
-  private <A extends Annotation> A findAnnotation(Method method, Class<A> annotationClass) {
-    A annotation = method.getAnnotation(annotationClass);
+  private <A extends Annotation> A findAnnotation(AccessibleObject accessibleObject, Class<A> annotationClass) {
+    A annotation = accessibleObject.getAnnotation(annotationClass);
     if (annotation != null) {
       return annotation;
     }
@@ -345,7 +362,7 @@ public class CdiSpringExtension implements Extension {
     //
     // @Qualifier
     // public @interface MyQualifier {}
-    for (Annotation methodAnnotation : method.getAnnotations()) {
+    for (Annotation methodAnnotation : accessibleObject.getAnnotations()) {
       A typeAnnotation = methodAnnotation.annotationType().getAnnotation(annotationClass);
       if (typeAnnotation != null) {
         return typeAnnotation;
@@ -355,11 +372,12 @@ public class CdiSpringExtension implements Extension {
     // nothing found
     return null;
   }
-
-  private Annotation findQualifier(Method method) {
-    Annotation annotation = method.getAnnotation(org.springframework.beans.factory.annotation.Qualifier.class);
+  
+  private static <A extends Annotation> List<A> findAnnotations(AccessibleObject annotationHolder, Class<A> annotationClass) {
+    List<A>  annotations = new ArrayList<>(4);
+    A annotation = annotationHolder.getAnnotation(annotationClass);
     if (annotation != null) {
-      return annotation;
+      annotations.add(annotation);
     }
     // search for meta annotations
     //
@@ -369,15 +387,56 @@ public class CdiSpringExtension implements Extension {
     //
     // @Qualifier
     // public @interface MyQualifier {}
-    for (Annotation methodAnnotation : method.getAnnotations()) {
-      Annotation typeAnnotation = methodAnnotation.annotationType().getAnnotation(org.springframework.beans.factory.annotation.Qualifier.class);
+    for (Annotation methodAnnotation : annotationHolder.getAnnotations()) {
+      A typeAnnotation = methodAnnotation.annotationType().getAnnotation(annotationClass);
       if (typeAnnotation != null) {
-        return methodAnnotation;
+        annotations.add(typeAnnotation);
       }
     }
+    
+    return annotations;
+  }
+  
+  private static <A extends Annotation> List<A> findAnnotations(Annotation[] annotations, Class<A> annotationClass) {
+    List<A>  annotationList = new ArrayList<>(4);
+    for (Annotation annotation : annotations) {
+      if (annotationClass.isInstance(annotation)) {
+        annotationList.add(annotationClass.cast(annotation));
+      } else {
+        // search for meta annotations
+        //
+        // @Bean
+        // @MyQualifier
+        // public Object myBean() {}
+        //
+        // @Qualifier
+        // public @interface MyQualifier {}
+        A typeAnnotation = annotation.annotationType().getAnnotation(annotationClass);
+        if (typeAnnotation != null) {
+          annotationList.add(typeAnnotation);
+        }
+      }
+    }
+    
+    return annotationList;
+  }
+  
+  private static Annotation[] findQualifiers(Annotation[] annotations) {
+    List<org.springframework.beans.factory.annotation.Qualifier> qualifiers = findAnnotations(annotations, org.springframework.beans.factory.annotation.Qualifier.class);
+    if (qualifiers.isEmpty()) {
+      return EMPTY_ANNOTATION_ARRAY;
+    } else {
+      return qualifiers.toArray(new Annotation[qualifiers.size()]);
+    }
+  }
 
-    // nothing found
-    return null;
+  private static Annotation[] findQualifiers(AccessibleObject annotationHolder) {
+    List<org.springframework.beans.factory.annotation.Qualifier> qualifiers = findAnnotations(annotationHolder, org.springframework.beans.factory.annotation.Qualifier.class);
+    if (qualifiers.isEmpty()) {
+      return EMPTY_ANNOTATION_ARRAY;
+    } else {
+      return qualifiers.toArray(new Annotation[qualifiers.size()]);
+    }
   }
 
   private Class<? extends Annotation> translateScope(org.springframework.context.annotation.Scope scope) {
@@ -414,7 +473,7 @@ public class CdiSpringExtension implements Extension {
       for (Field field : current.getDeclaredFields()) {
         Autowired autowired = field.getAnnotation(Autowired.class);
         if (autowired != null) {
-          Object value = getBean(bm, autowired, field.getType());
+          Object value = getBean(bm, autowired, field.getType(), field);
           field.setAccessible(true);
           try {
             field.set(springBean, value);
@@ -432,9 +491,11 @@ public class CdiSpringExtension implements Extension {
       Autowired autowired = method.getAnnotation(Autowired.class);
       if (autowired != null) {
         Class<?>[] parameterTypes = method.getParameterTypes();
+        Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         Object[] parameters = new Object[parameterTypes.length];
         for (int i = 0; i < parameterTypes.length; i++) {
-          parameters[i] = getBean(bm, autowired, parameterTypes[i]);
+          Annotation[] parameterAnnotation = parameterAnnotations[i];
+          parameters[i] = getBean(bm, autowired, parameterTypes[i], findQualifiers(parameterAnnotation));
         }
         try {
           method.invoke(springBean, parameters);
