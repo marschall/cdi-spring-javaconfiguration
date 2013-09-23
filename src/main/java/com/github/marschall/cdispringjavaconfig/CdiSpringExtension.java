@@ -149,7 +149,7 @@ public class CdiSpringExtension implements Extension {
 
       @Override
       public String getName() {
-        return method.getName();
+        return method.getDeclaringClass().getName() + '.' + method.getName();
       }
 
       @Override
@@ -337,6 +337,17 @@ public class CdiSpringExtension implements Extension {
     }
     if (beans.size() > 1) {
       throw new CreationException("multiple beans for class: " + type + " found");
+    }
+    return beans.iterator().next();
+  }
+  
+  private static Bean<?> getBean(BeanManager bm, String name) {
+    Set<Bean<?>> beans = bm.getBeans(name);
+    if (beans.isEmpty()) {
+      return null;
+    }
+    if (beans.size() > 1) {
+      throw new CreationException("multiple beans for name: " + name + " found");
     }
     return beans.iterator().next();
   }
@@ -532,8 +543,12 @@ public class CdiSpringExtension implements Extension {
 
     @Override
     public String getName() {
-      // TODO aliases
-      return configurationClass.getSimpleName();
+      String simpleName = configurationClass.getSimpleName();
+      if (simpleName.length() == 1) {
+        return simpleName.toLowerCase();
+      } else {
+        return Character.toLowerCase(simpleName.charAt(0)) + simpleName.substring(1);
+      }
     }
 
     @Override
