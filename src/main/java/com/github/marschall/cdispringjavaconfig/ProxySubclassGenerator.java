@@ -49,7 +49,7 @@ class ProxySubclassGenerator {
 
   byte[] generate() {
     ClassWriter cw = new ClassWriter(0);
-//    ClassWriter cw = new ClassWriter(COMPUTE_FRAMES | COMPUTE_MAXS); // + ?
+//    ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS); // + ?
 
 
     // TODO read version of superclass
@@ -87,7 +87,6 @@ class ProxySubclassGenerator {
 
   private void generateConstructor(ClassWriter cw, String superName) {
     MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
-    mv = cw.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
     mv.visitCode();
     mv.visitVarInsn(ALOAD, 0);
     mv.visitMethodInsn(INVOKESPECIAL, superName, "<init>", "()V");

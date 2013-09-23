@@ -28,13 +28,8 @@ public class ProxySubclassGeneratorTest {
     String generatedClassName = generator.getClassName();
     ClassLoader classLoader = new AdHocClassLoader(configurationClass.getClassLoader(), Collections.singletonMap(generatedClassName, byteCode));
 
-    Class<?> configurationSubclass;
-    try {
-      configurationSubclass = Class.forName(generatedClassName, true, classLoader);
-    } catch (ClassFormatError e) {
-      // TODO dump class
-      throw e;
-    }
+    Class<?> configurationSubclass = Class.forName(generatedClassName, true, classLoader);
+    
     Object configuration = configurationSubclass.getConstructor().newInstance();
     Object pojo1 = configurationSubclass.getMethod("pojo").invoke(configuration);
     Object pojo2 = configurationSubclass.getMethod("pojo").invoke(configuration);
