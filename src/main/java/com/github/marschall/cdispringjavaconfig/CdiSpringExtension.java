@@ -34,7 +34,6 @@ import javax.enterprise.util.AnnotationLiteral;
 
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.annotation.Autowire;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Import;
@@ -269,7 +268,7 @@ public class CdiSpringExtension implements Extension {
       }
       
       private boolean isAutowire() {
-        return getBeanAnnotation().autowire() != Autowire.NO;
+        return getBeanAnnotation().autowire().isAutowire();
       }
       
       private String getInitMethod() {
@@ -325,7 +324,7 @@ public class CdiSpringExtension implements Extension {
   private static Bean<?> getRequiredBean(BeanManager bm, Type type, Annotation... qualifiers) {
     Bean<?> bean = getBean(bm, type, qualifiers);
     if (bean == null) {
-      throw new CreationException("multiple beans for configuration class: " + type + " found");
+      throw new CreationException("no beans for class: " + type + " found");
     }
     return bean;
   }
@@ -337,17 +336,6 @@ public class CdiSpringExtension implements Extension {
     }
     if (beans.size() > 1) {
       throw new CreationException("multiple beans for class: " + type + " found");
-    }
-    return beans.iterator().next();
-  }
-  
-  private static Bean<?> getBean(BeanManager bm, String name) {
-    Set<Bean<?>> beans = bm.getBeans(name);
-    if (beans.isEmpty()) {
-      return null;
-    }
-    if (beans.size() > 1) {
-      throw new CreationException("multiple beans for name: " + name + " found");
     }
     return beans.iterator().next();
   }
