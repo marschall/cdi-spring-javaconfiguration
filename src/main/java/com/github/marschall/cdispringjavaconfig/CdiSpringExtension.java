@@ -211,7 +211,6 @@ public class CdiSpringExtension implements Extension {
           throw new CreationException("could not create bean for: " + method, e);
         }
         if (isAutowire()) {
-          // TODO name vs type?
           autowire(springBean, ctx, bm);
         }
         callMethod(getInitMethod(), springBean);
