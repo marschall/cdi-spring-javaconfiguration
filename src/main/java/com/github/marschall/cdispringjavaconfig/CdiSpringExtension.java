@@ -125,10 +125,6 @@ public class CdiSpringExtension implements Extension {
     }
     // TODO lazy?
     boolean isLazy = method.getAnnotation(Lazy.class) != null;
-    org.springframework.beans.factory.annotation.Qualifier qualifier = method.getAnnotation(org.springframework.beans.factory.annotation.Qualifier.class);
-    for (Annotation methodAnnotation : method.getAnnotations()) {
-      boolean isQualifierAnnotation = methodAnnotation.annotationType().getAnnotation(org.springframework.beans.factory.annotation.Qualifier.class) != null;
-    }
     final AnnotatedType<Object> at = (AnnotatedType<Object>) bm.createAnnotatedType(method.getReturnType());
     final InjectionTarget<Object> it = bm.createInjectionTarget(at);
 
