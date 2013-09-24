@@ -296,6 +296,16 @@ public class CdiSpringExtension implements Extension {
         } else {
           callMethod(destroyMethod, springBean);
         }
+        if (springBean instanceof AutoCloseable) {
+          if (!("close".equals(destroyMethod) && method.getParameterTypes().length == 0)) {
+            AutoCloseable autoCloseable = (AutoCloseable) springBean;
+            try {
+              autoCloseable.close();
+            } catch (Exception e) {
+              throw new CreationException("could not auto close " + springBean, e);
+            }
+          }
+        }
         it.dispose(springBean);
         ctx.release();
       }

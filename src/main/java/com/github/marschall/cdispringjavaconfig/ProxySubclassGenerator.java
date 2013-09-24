@@ -43,17 +43,12 @@ class ProxySubclassGenerator {
   }
 
   private String getSubclassPostfix() {
-//    return "$$EnhancerByCGLIB";
-    return "EnhancerByCGLIB";
+    return "$$EnhancerByCGLIB";
   }
 
   byte[] generate() {
     ClassWriter cw = new ClassWriter(0);
-//    ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS); // + ?
 
-
-    // TODO read version of superclass
-//    ClassNode cn = new ClassNode();
     String[] interfaces = null;
     String signature = null;
     String superName = Type.getInternalName(this.superclass);
