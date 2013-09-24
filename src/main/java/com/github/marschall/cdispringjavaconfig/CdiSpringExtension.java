@@ -2,6 +2,7 @@ package com.github.marschall.cdispringjavaconfig;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -58,6 +60,9 @@ public class CdiSpringExtension implements Extension {
   private static final Annotation[] EMPTY_ANNOTATION_ARRAY = new Annotation[0];
   
   private Class<?>[] configurationClasses;
+  
+  // Maps a class to it's proxy subclass
+  private Map<Class<?>, Class<?>> proxyClasses;
 
   public void loadConfiguration(@Observes ProcessAnnotatedType<?> pat, BeanManager beanManager) {
     AnnotatedType<?> annotatedType = pat.getAnnotatedType();
@@ -70,9 +75,23 @@ public class CdiSpringExtension implements Extension {
   }
 
   public void afterBeanDiscovery(@Observes AfterBeanDiscovery abd, BeanManager bm) {
+    this.validateConfigurationClasses();
+    
     for (Class<?> configurationClass : this.configurationClasses) {
       this.buildConfiguraion(configurationClass, abd, bm);
     }
+  }
+  
+  private void validateConfigurationClasses() {
+    for (Class<?> configurationClass : this.configurationClasses) {
+      this.validateConfigurationClass(configurationClass);
+    }
+  }
+  
+  private void validateConfigurationClass(Class<?> configurationClass) {
+    validateDefaultConstructor(configurationClass);
+    validateAnnotationNotPresent(configurationClass, ImportResource.class);
+    validateAnnotationNotPresent(configurationClass, Profile.class);
   }
 
   private void buildConfiguraion(Class<?> configurationClass, AfterBeanDiscovery abd, BeanManager bm) {
@@ -81,9 +100,6 @@ public class CdiSpringExtension implements Extension {
       // configuration already registered
       return;
     }
-    
-    validateAnnotationNotPresent(configurationClass, ImportResource.class);
-    validateAnnotationNotPresent(configurationClass, Profile.class);
     
     Import importAnnotation = configurationClass.getAnnotation(Import.class);
     for (Class<?> importedClass : importAnnotation.value()) {
@@ -94,18 +110,31 @@ public class CdiSpringExtension implements Extension {
     //use this to instantiate the class and inject dependencies
     InjectionTarget<Object> it = (InjectionTarget<Object>) bm.createInjectionTarget(at);
 
-
     abd.addBean(buildConfigurationBean(bm, configurationClass, it));
 
     addBeanMethods(configurationClass, abd, bm);
-
   }
 
-  void validateAnnotationNotPresent(Class<?> configurationClass, Class<? extends Annotation> annotationClass) {
+  private void validateAnnotationNotPresent(Class<?> configurationClass, Class<? extends Annotation> annotationClass) {
     Annotation annotation = configurationClass.getAnnotation(annotationClass);
     if (annotation != null) {
       throw new CreationException('@' + annotationClass.getSimpleName() + " on " + configurationClass + " not supported");
     }
+  }
+  
+  private void validateDefaultConstructor(Class<?> configurationClass) {
+    for (Constructor<?> constructor : configurationClass.getDeclaredConstructors()) {
+      if (constructor.getParameterTypes().length == 0) {
+        int modifiers = constructor.getModifiers();
+        if (Modifier.isPrivate(modifiers)) {
+          // public and protected are fine
+          // package protected will be fine since the generated class will be in the same package
+          // (the constructor we'll generate will be public)
+          throw new CreationException(configurationClass + " default constructor must not be private");
+        }
+      }
+    }
+    throw new CreationException(configurationClass + " is missing a default constructor");
   }
 
   private void addBeanMethods(Class<?> configurationClass, AfterBeanDiscovery abd, BeanManager bm) {
@@ -349,14 +378,6 @@ public class CdiSpringExtension implements Extension {
       throw new CreationException("multiple beans for class: " + type + " found");
     }
     return beans.iterator().next();
-  }
-
-  private boolean isSingleton(org.springframework.context.annotation.Scope scope) {
-    if (scope == null) {
-      // spring default
-      return true;
-    }
-    return scope.value().equals(ConfigurableBeanFactory.SCOPE_SINGLETON);
   }
 
   private <A extends Annotation> A findAnnotation(AccessibleObject accessibleObject, Class<A> annotationClass) {
