@@ -14,6 +14,7 @@ import java.util.Set;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.ConversationScoped;
+import javax.enterprise.context.Dependent;
 import javax.enterprise.context.RequestScoped;
 import javax.enterprise.context.SessionScoped;
 import javax.enterprise.context.spi.CreationalContext;
@@ -38,7 +39,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.ImportResource;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 
@@ -75,7 +75,7 @@ public class CdiSpringExtension implements Extension {
     }
   }
 
-  private void buildConfiguraion(final Class<?> configurationClass, AfterBeanDiscovery abd, BeanManager bm) {
+  private void buildConfiguraion(Class<?> configurationClass, AfterBeanDiscovery abd, BeanManager bm) {
     Set<Bean<?>> configurations = bm.getBeans(configurationClass);
     if (!configurations.isEmpty()) {
       // configuration already registered
@@ -101,10 +101,10 @@ public class CdiSpringExtension implements Extension {
 
   }
 
-  void validateAnnotationNotPresent(final Class<?> configurationClass, Class<? extends Annotation> annotationClass) {
+  void validateAnnotationNotPresent(Class<?> configurationClass, Class<? extends Annotation> annotationClass) {
     Annotation annotation = configurationClass.getAnnotation(annotationClass);
     if (annotation != null) {
-      throw new CreationException("@" + annotationClass.getSimpleName() + " on " + configurationClass + " not supported");
+      throw new CreationException('@' + annotationClass.getSimpleName() + " on " + configurationClass + " not supported");
     }
   }
 
@@ -123,8 +123,7 @@ public class CdiSpringExtension implements Extension {
     if (Modifier.isStatic(modifiers)) {
       throw new InjectionException("static method: " + method + " not supported");
     }
-    // TODO lazy?
-    boolean isLazy = method.getAnnotation(Lazy.class) != null;
+    // boolean isLazy = method.getAnnotation(Lazy.class) != null;
     final AnnotatedType<Object> at = (AnnotatedType<Object>) bm.createAnnotatedType(method.getReturnType());
     final InjectionTarget<Object> it = bm.createInjectionTarget(at);
 
@@ -191,7 +190,8 @@ public class CdiSpringExtension implements Extension {
 
       @Override
       public boolean isNullable() {
-        return false;
+        // apparently it's OK for @Bean methods to return null
+        return true;
       }
 
       @Override
@@ -199,9 +199,9 @@ public class CdiSpringExtension implements Extension {
         Bean<?> bean = getRequiredBean(bm, configurationClass);
         Object configuration = bm.getReference(bean, configurationClass, ctx);
         Object[] parameters = getParameters();
+        // can be null
         Object springBean;
         try {
-          // TODO null?
           springBean = method.invoke(configuration, parameters);
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
           throw new CreationException("could not create bean for: " + method, e);
@@ -210,7 +210,9 @@ public class CdiSpringExtension implements Extension {
           autowire(springBean, ctx, bm);
         }
         callMethod(getInitMethod(), springBean);
-        it.postConstruct(springBean);
+        if (springBean != null) {
+          it.postConstruct(springBean);
+        }
         if (springBean instanceof FactoryBean) {
           try {
             springBean = ((FactoryBean<?>) springBean).getObject();
@@ -253,6 +255,10 @@ public class CdiSpringExtension implements Extension {
       }
       
       private void callMethod(String methodName, Object springBean) {
+        if (springBean == null) {
+          return;
+        }
+        
         if (!methodName.isEmpty()) {
           try {
             springBean.getClass().getMethod(methodName).invoke(springBean);
@@ -448,7 +454,8 @@ public class CdiSpringExtension implements Extension {
       case "conversation":
         return ConversationScoped.class;
       case ConfigurableBeanFactory.SCOPE_PROTOTYPE:
-        // TODO not yet implemented
+        // ???
+        return Dependent.class;
       case ConfigurableBeanFactory.SCOPE_SINGLETON:
         return ApplicationScoped.class;
       default:
@@ -462,6 +469,10 @@ public class CdiSpringExtension implements Extension {
   }
   
   private static void autowire(Object springBean, CreationalContext<Object> ctx, BeanManager bm) {
+    if (springBean == null) {
+      return;
+    }
+    
     Class<? extends Object> current = springBean.getClass();
     while (current != Object.class) {
       for (Field field : current.getDeclaredFields()) {
