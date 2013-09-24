@@ -38,11 +38,10 @@ class ProxySubclassGenerator {
   }
 
   String getClassName() {
-    // TODO optimize
     return this.superclass.getName() + getSubclassPostfix();
   }
 
-  private String getSubclassPostfix() {
+  String getSubclassPostfix() {
     return "$$EnhancerByCGLIB";
   }
 

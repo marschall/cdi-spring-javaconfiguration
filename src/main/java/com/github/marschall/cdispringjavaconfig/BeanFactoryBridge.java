@@ -22,6 +22,7 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 class BeanFactoryBridge implements BeanFactory {
 
   private final BeanManager beanManager;
+  // FIXME
   private final CreationalContext context;
 
   BeanFactoryBridge(BeanManager beanManager, CreationalContext context) {

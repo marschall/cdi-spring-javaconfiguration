@@ -1,6 +1,7 @@
 package com.github.marschall.cdispringjavaconfig;
 
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -16,8 +17,13 @@ public class SampleConfigurationNonPublicTest {
   private Pojo pojo;
 
   @Test
-  public void nullPojo() {
+  public void nonPublicBean() {
     assertNotNull(this.pojo);
+  }
+  
+  @Test
+  public void nonPublicAutowired() {
+    assertTrue(SampleConfigurationNonPublic.isApplicationContextCalled());
   }
 
 }

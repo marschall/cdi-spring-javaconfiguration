@@ -8,10 +8,13 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -75,16 +78,37 @@ public class CdiSpringExtension implements Extension {
   }
 
   public void afterBeanDiscovery(@Observes AfterBeanDiscovery abd, BeanManager bm) {
-    this.validateConfigurationClasses();
+    this.buildProxySubclasses();
     
     for (Class<?> configurationClass : this.configurationClasses) {
       this.buildConfiguraion(configurationClass, abd, bm);
     }
   }
   
-  private void validateConfigurationClasses() {
+  private void buildProxySubclasses() {
+    Map<ClassLoader, List<Class<?>>> perClassloader = new HashMap<>();
     for (Class<?> configurationClass : this.configurationClasses) {
-      this.validateConfigurationClass(configurationClass);
+      ClassLoader classLoader = configurationClass.getClassLoader();
+      List<Class<?>> classes = perClassloader.get(classLoader);
+      if (classes == null) {
+        classes = new ArrayList<>();
+        perClassloader.put(classLoader, classes);
+      }
+      classes.add(configurationClass);
+    }
+    
+    for (Entry<ClassLoader, List<Class<?>>> entry : perClassloader.entrySet()) {
+      ClassLoader classLoader = entry.getKey();
+      List<Class<?>> classes = entry.getValue();
+      Map<String, byte[]> generatedCode = new HashMap<>(classes.size());
+      for (Class<?> clazz : classes) {
+        // TODO cache
+        List<Method> beanMethods = this.getBeanMethods(clazz);
+        // TODO cache
+        ProxySubclassGenerator generator = new ProxySubclassGenerator(clazz, beanMethods);
+        byte[] byteCode = generator.generate();
+        generatedCode.put(clazz.getName(), byteCode);
+      }
     }
   }
   
@@ -101,7 +125,10 @@ public class CdiSpringExtension implements Extension {
       return;
     }
     
+    validateConfigurationClass(configurationClass);
+    
     Import importAnnotation = configurationClass.getAnnotation(Import.class);
+    // TODO add to configuration classes, attention we're iterating over it
     for (Class<?> importedClass : importAnnotation.value()) {
       buildConfiguraion(importedClass, abd, bm);
     }
@@ -110,9 +137,10 @@ public class CdiSpringExtension implements Extension {
     //use this to instantiate the class and inject dependencies
     InjectionTarget<Object> it = (InjectionTarget<Object>) bm.createInjectionTarget(at);
 
+    List<Method> beanMethods = this.getBeanMethods(configurationClass);
     abd.addBean(buildConfigurationBean(bm, configurationClass, it));
 
-    addBeanMethods(configurationClass, abd, bm);
+    addBeanMethods(configurationClass, beanMethods, abd, bm);
   }
 
   private void validateAnnotationNotPresent(Class<?> configurationClass, Class<? extends Annotation> annotationClass) {
@@ -136,9 +164,14 @@ public class CdiSpringExtension implements Extension {
     }
     throw new CreationException(configurationClass + " is missing a default constructor");
   }
+  
+  private List<Method> getBeanMethods(Class<?> configurationClass) {
+    // TODO non public
+    return Arrays.asList(configurationClass.getMethods());
+  }
 
-  private void addBeanMethods(Class<?> configurationClass, AfterBeanDiscovery abd, BeanManager bm) {
-    for (Method method : configurationClass.getMethods()) {
+  private void addBeanMethods(Class<?> configurationClass, List<Method> beanMethods, AfterBeanDiscovery abd, BeanManager bm) {
+    for (Method method : beanMethods) {
       org.springframework.context.annotation.Bean springBeanAnnoation = method.getAnnotation(org.springframework.context.annotation.Bean.class);
       if (springBeanAnnoation != null) {
         Bean<?> bean =  addBeanMethod(configurationClass, method, abd, bm);
@@ -225,7 +258,7 @@ public class CdiSpringExtension implements Extension {
 
       @Override
       public Object create(CreationalContext<Object> ctx) {
-        Bean<?> bean = getRequiredBean(bm, configurationClass);
+        Bean<?> bean = getRequiredBean(bm, configurationClass, EMPTY_ANNOTATION_ARRAY);
         Object configuration = bm.getReference(bean, configurationClass, ctx);
         Object[] parameters = getParameters();
         // can be null
@@ -345,7 +378,7 @@ public class CdiSpringExtension implements Extension {
     return s == null ? "" : s;
   }
   
-  private static Object getBean(BeanManager bm, Autowired autowired, Class<?> type, AccessibleObject annotationHolder) {
+  private static Bean<?>  getBean(BeanManager bm, Autowired autowired, Class<?> type, AccessibleObject annotationHolder) {
     if (autowired.required()) {
       return getRequiredBean(bm, type, findQualifiers(annotationHolder));
     } else {
@@ -353,7 +386,7 @@ public class CdiSpringExtension implements Extension {
     }
   }
   
-  private static Object getBean(BeanManager bm, Autowired autowired, Class<?> type, Annotation[] qualifiers) {
+  private static Bean<?>  getBean(BeanManager bm, Autowired autowired, Class<?> type, Annotation[] qualifiers) {
     if (autowired.required()) {
       return getRequiredBean(bm, type, qualifiers);
     } else {
@@ -361,7 +394,7 @@ public class CdiSpringExtension implements Extension {
     }
   }
 
-  private static Bean<?> getRequiredBean(BeanManager bm, Type type, Annotation... qualifiers) {
+  private static Bean<?>  getRequiredBean(BeanManager bm, Type type, Annotation[] qualifiers) {
     Bean<?> bean = getBean(bm, type, qualifiers);
     if (bean == null) {
       throw new CreationException("no beans for class: " + type + " found");
@@ -369,7 +402,7 @@ public class CdiSpringExtension implements Extension {
     return bean;
   }
 
-  private static Bean<?> getBean(BeanManager bm, Type type, Annotation... qualifiers) {
+  private static Bean<?>  getBean(BeanManager bm, Type type, Annotation[] qualifiers) {
     Set<Bean<?>> beans = bm.getBeans(type, qualifiers);
     if (beans.isEmpty()) {
       return null;
@@ -503,7 +536,7 @@ public class CdiSpringExtension implements Extension {
     if (springBean == null) {
       return;
     }
-    
+
     Class<? extends Object> current = springBean.getClass();
     while (current != Object.class) {
       for (Field field : current.getDeclaredFields()) {
@@ -518,11 +551,11 @@ public class CdiSpringExtension implements Extension {
           }
         }
       }
-      
+
       current = current.getSuperclass();
     }
-    
-    // TODO non-public?
+
+    // TODO non-public
     for (Method method : springBean.getClass().getMethods()) {
       Autowired autowired = method.getAnnotation(Autowired.class);
       if (autowired != null) {
@@ -536,12 +569,11 @@ public class CdiSpringExtension implements Extension {
         try {
           method.invoke(springBean, parameters);
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
-        throw new CreationException("could not invoke: " + method, e);
+          throw new CreationException("could not invoke: " + method, e);
+        }
       }
-      }
-      
     }
-    
+
   }
 
   static final class ConfigurationBean implements Bean<Object> {
