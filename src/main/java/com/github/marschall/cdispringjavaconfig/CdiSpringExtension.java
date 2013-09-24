@@ -260,7 +260,7 @@ public class CdiSpringExtension implements Extension {
       public Object create(CreationalContext<Object> ctx) {
         Bean<?> bean = getRequiredBean(bm, configurationClass, EMPTY_ANNOTATION_ARRAY);
         Object configuration = bm.getReference(bean, configurationClass, ctx);
-        Object[] parameters = getParameters();
+        Object[] parameters = getParameters(ctx);
         // can be null
         Object springBean;
         try {
@@ -288,7 +288,7 @@ public class CdiSpringExtension implements Extension {
         return springBean;
       }
 
-      private Object[] getParameters() {
+      private Object[] getParameters(CreationalContext<?> ctx) {
         Class<?>[] parameterTypes = method.getParameterTypes();
         Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         Object[] parameters;
@@ -299,7 +299,9 @@ public class CdiSpringExtension implements Extension {
           parameters = new Object[parameterTypes.length];
           for (int i = 0; i < parameterTypes.length; i++) {
             Annotation[] parameterAnnotation = parameterAnnotations[i];
-            parameters[i] = getRequiredBean(bm, parameterTypes[i], findQualifiers(parameterAnnotation));
+            Type type = parameterTypes[i];
+            Bean<?> bean = getRequiredBean(bm, type, findQualifiers(parameterAnnotation));
+            parameters[i] = bm.getReference(bean, type, ctx);
             
           }
         }
@@ -378,7 +380,7 @@ public class CdiSpringExtension implements Extension {
     return s == null ? "" : s;
   }
   
-  private static Bean<?>  getBean(BeanManager bm, Autowired autowired, Class<?> type, AccessibleObject annotationHolder) {
+  private static Bean<?> getBean(BeanManager bm, Autowired autowired, Type type, AccessibleObject annotationHolder) {
     if (autowired.required()) {
       return getRequiredBean(bm, type, findQualifiers(annotationHolder));
     } else {
@@ -386,7 +388,7 @@ public class CdiSpringExtension implements Extension {
     }
   }
   
-  private static Bean<?>  getBean(BeanManager bm, Autowired autowired, Class<?> type, Annotation[] qualifiers) {
+  private static Bean<?> getBean(BeanManager bm, Autowired autowired, Type type, Annotation[] qualifiers) {
     if (autowired.required()) {
       return getRequiredBean(bm, type, qualifiers);
     } else {
@@ -394,7 +396,7 @@ public class CdiSpringExtension implements Extension {
     }
   }
 
-  private static Bean<?>  getRequiredBean(BeanManager bm, Type type, Annotation[] qualifiers) {
+  private static Bean<?> getRequiredBean(BeanManager bm, Type type, Annotation[] qualifiers) {
     Bean<?> bean = getBean(bm, type, qualifiers);
     if (bean == null) {
       throw new CreationException("no beans for class: " + type + " found");
@@ -542,10 +544,11 @@ public class CdiSpringExtension implements Extension {
       for (Field field : current.getDeclaredFields()) {
         Autowired autowired = field.getAnnotation(Autowired.class);
         if (autowired != null) {
-          Object value = getBean(bm, autowired, field.getType(), field);
+          Type type = field.getType();
+          Bean<?> bean = getBean(bm, autowired, type, field);
           field.setAccessible(true);
           try {
-            field.set(springBean, value);
+            field.set(springBean, bm.getReference(bean, type, ctx));
           } catch (ReflectiveOperationException | IllegalArgumentException e) {
             throw new CreationException("could not set value of: " + field, e);
           }
@@ -564,7 +567,9 @@ public class CdiSpringExtension implements Extension {
         Object[] parameters = new Object[parameterTypes.length];
         for (int i = 0; i < parameterTypes.length; i++) {
           Annotation[] parameterAnnotation = parameterAnnotations[i];
-          parameters[i] = getBean(bm, autowired, parameterTypes[i], findQualifiers(parameterAnnotation));
+          Type type = parameterTypes[i];
+          Bean<?> bean = getBean(bm, autowired, type, findQualifiers(parameterAnnotation));
+          parameters[i] = bm.getReference(bean, type, ctx);
         }
         try {
           method.invoke(springBean, parameters);
