@@ -10,23 +10,16 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
 @RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration(classes = SampleConfigurationNonPublic.class)
-public class SampleConfigurationNonPublicTest {
-  
+@ContextConfiguration(classes = SampleConfigurationPostConstruct.class)
+public class SampleConfigurationPostConstructTest {
+
   @Autowired
-  private Pojo pojo;
-  
-  @Autowired
-  private SampleConfigurationNonPublic configuration;
+  private PostConstructPojo pojo;
 
   @Test
-  public void nonPublicBean() {
+  public void postConstructCalled() {
     assertNotNull(this.pojo);
-  }
-  
-  @Test
-  public void nonPublicAutowired() {
-    assertTrue(configuration.isApplicationContextCalled());
+    assertTrue(this.pojo.isPostConstructCalled());
   }
 
 }

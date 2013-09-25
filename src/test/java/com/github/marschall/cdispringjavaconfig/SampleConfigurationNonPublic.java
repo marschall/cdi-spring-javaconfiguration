@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class SampleConfigurationNonPublic {
 
-  private static boolean application_context_called = false;
+  private boolean applicationContextCalled = false;
 
   @Bean
   protected Pojo pojo() {
@@ -17,11 +17,11 @@ public class SampleConfigurationNonPublic {
   
   @Autowired
   private void setApplicationContext(ApplicationContext applicationContext) {
-    application_context_called = true;
+    applicationContextCalled = true;
   }
   
-  static boolean isApplicationContextCalled() {
-    return application_context_called;
+  boolean isApplicationContextCalled() {
+    return applicationContextCalled;
   }
 
 }

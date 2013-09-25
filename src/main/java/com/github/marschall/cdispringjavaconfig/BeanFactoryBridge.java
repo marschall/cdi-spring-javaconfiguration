@@ -62,7 +62,7 @@ class BeanFactoryBridge implements BeanFactory {
 
   private Object getSingleSpringBean(String name, Set<Bean<?>> beans) {
     Bean<?> cdiBean = this.getSingleCdiBean(name, beans);
-    // TODO better way? check size?
+    // TODO better way? check size? check for Object?
     Type type = cdiBean.getTypes().iterator().next();
     return this.beanManager.getReference(cdiBean, type, context);
   }
