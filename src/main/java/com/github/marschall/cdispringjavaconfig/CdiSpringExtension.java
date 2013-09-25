@@ -38,6 +38,7 @@ import javax.enterprise.inject.spi.InjectionTarget;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
 import javax.enterprise.util.AnnotationLiteral;
 
+import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,10 +63,14 @@ public class CdiSpringExtension implements Extension {
   
   private static final Annotation[] EMPTY_ANNOTATION_ARRAY = new Annotation[0];
   
-  private Class<?>[] configurationClasses;
+  private final Set<Class<?>> configurationClasses;
   
   // Maps a class to it's proxy subclass
   private Map<Class<?>, Class<?>> proxyClasses;
+  
+  public CdiSpringExtension() {
+    this.configurationClasses = new HashSet<>();
+  }
 
   public void loadConfiguration(@Observes ProcessAnnotatedType<?> pat, BeanManager beanManager) {
     AnnotatedType<?> annotatedType = pat.getAnnotatedType();
@@ -74,7 +79,10 @@ public class CdiSpringExtension implements Extension {
       // not an EJB with @ConfigurationClass -> we don't care
       return;
     }
-    configurationClasses = configurationClassAnnotation.value();
+    
+    for (Class<?> clazz : configurationClassAnnotation.value()) {
+      configurationClasses.add(clazz);
+    }
   }
 
   public void afterBeanDiscovery(@Observes AfterBeanDiscovery abd, BeanManager bm) {
@@ -85,31 +93,68 @@ public class CdiSpringExtension implements Extension {
     }
   }
   
-  private void buildProxySubclasses() {
-    Map<ClassLoader, List<Class<?>>> perClassloader = new HashMap<>();
+  private Map<ClassLoader, Set<Class<?>>> buildProxySubclasses() {
+    Map<ClassLoader, Set<Class<?>>> perClassloader = new HashMap<>();
+    Set<Class<?>> processed = new HashSet<>();
     for (Class<?> configurationClass : this.configurationClasses) {
-      ClassLoader classLoader = configurationClass.getClassLoader();
-      List<Class<?>> classes = perClassloader.get(classLoader);
-      if (classes == null) {
-        classes = new ArrayList<>();
-        perClassloader.put(classLoader, classes);
-      }
-      classes.add(configurationClass);
+      this.processImports(configurationClass, processed, perClassloader);
     }
     
-    for (Entry<ClassLoader, List<Class<?>>> entry : perClassloader.entrySet()) {
+    return perClassloader;
+  }
+  
+  private void processImports(Class<?> configurationClass, Set<Class<?>> processed, Map<ClassLoader, Set<Class<?>>> perClassloader) {
+    if (processed.contains(configurationClass)) {
+      return;
+    }
+    processed.add(configurationClass);
+    
+    this.validateConfigurationClass(configurationClass);
+    Import importAnnotation = configurationClass.getAnnotation(Import.class);
+    for (Class<?> importClass : importAnnotation.value()) {
+      ClassLoader classLoader = importClass.getClassLoader();
+      Set<Class<?>> classes = perClassloader.get(classLoader);
+      if (classes == null) {
+        classes = new HashSet<>();
+        perClassloader.put(classLoader, classes);
+      }
+      classes.add(importClass);
+      
+      processImports(importClass, processed, perClassloader);
+    }
+    
+  }
+  
+  private Map<Class<?>, Object> instantiate(Map<ClassLoader, Set<Class<?>>> perClassLoader) {
+    Map<Class<?>, Object> proxyClasses = new HashMap<>();
+    for (Entry<ClassLoader, Set<Class<?>>> entry : perClassLoader.entrySet()) {
       ClassLoader classLoader = entry.getKey();
-      List<Class<?>> classes = entry.getValue();
+      Set<Class<?>> classes = entry.getValue();
       Map<String, byte[]> generatedCode = new HashMap<>(classes.size());
+      Map<String, Class<?>> proxyNameToClass = new HashMap<>(classes.size());
       for (Class<?> clazz : classes) {
         // TODO cache
         List<Method> beanMethods = this.getBeanMethods(clazz);
         // TODO cache
         ProxySubclassGenerator generator = new ProxySubclassGenerator(clazz, beanMethods);
         byte[] byteCode = generator.generate();
-        generatedCode.put(clazz.getName(), byteCode);
+        String proxyName = generator.getClassName();
+        proxyNameToClass.put(proxyName, clazz);
+        generatedCode.put(proxyName, byteCode);
+      }
+      AdHocClassLoader proxyClassLoader = new AdHocClassLoader(classLoader, generatedCode);
+      for (String proxyName : generatedCode.keySet()) {
+        Object proxy;
+        try {
+          Class<?> proxyClass = Class.forName(proxyName, true, proxyClassLoader);
+          proxy = proxyClass.getConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+          throw new BeanCreationException("failed to create proxy instance: " + proxyName, e);
+        }
+        proxyClasses.put(proxyNameToClass.get(proxyName), proxy);
       }
     }
+    return proxyClasses;
   }
   
   private void validateConfigurationClass(Class<?> configurationClass) {
@@ -125,18 +170,13 @@ public class CdiSpringExtension implements Extension {
       return;
     }
     
-    validateConfigurationClass(configurationClass);
-    
     Import importAnnotation = configurationClass.getAnnotation(Import.class);
     // TODO add to configuration classes, attention we're iterating over it
     for (Class<?> importedClass : importAnnotation.value()) {
       buildConfiguraion(importedClass, abd, bm);
     }
 
-    AnnotatedType<?> at = bm.createAnnotatedType(configurationClass);
-    //use this to instantiate the class and inject dependencies
-    InjectionTarget<Object> it = (InjectionTarget<Object>) bm.createInjectionTarget(at);
-
+    // TODO cache
     List<Method> beanMethods = this.getBeanMethods(configurationClass);
     abd.addBean(buildConfigurationBean(bm, configurationClass, it));
 
@@ -530,7 +570,10 @@ public class CdiSpringExtension implements Extension {
     }
   }
 
-  private Bean<Object> buildConfigurationBean(BeanManager bm, Class<?> configurationClass, InjectionTarget<Object> it) {
+  private Bean<Object> buildConfigurationBean(BeanManager bm, Class<?> configurationClass) {
+    AnnotatedType<?> at = bm.createAnnotatedType(configurationClass);
+    //use this to instantiate the class and inject dependencies
+    InjectionTarget<Object> it = (InjectionTarget<Object>) bm.createInjectionTarget(at);
     return new ConfigurationBean(bm, it, configurationClass);
   }
   
@@ -584,18 +627,20 @@ public class CdiSpringExtension implements Extension {
   static final class ConfigurationBean implements Bean<Object> {
 
     private final InjectionTarget<Object> it;
-    private final Class<?> configurationClass;
+    private final Object configuration;
     private final BeanManager bm;
+    private final Class<?> configurationClass;
 
-    ConfigurationBean(BeanManager bm, InjectionTarget<Object> it, Class<?> configurationClass) {
+    ConfigurationBean(BeanManager bm, InjectionTarget<Object> it, Object configuration, Class<?> configurationClass) {
       this.it = it;
       this.bm = bm;
+      this.configuration = configuration;
       this.configurationClass = configurationClass;
     }
 
     @Override
     public Class<?> getBeanClass() {
-      return configurationClass;
+      return this.configurationClass;
     }
 
     @Override
@@ -634,7 +679,7 @@ public class CdiSpringExtension implements Extension {
     @Override
 
     public Set<Type> getTypes() {
-      return Collections.<Type>singleton(configurationClass);
+      return Collections.<Type>singleton(this.configurationClass);
     }
 
     @Override
@@ -649,17 +694,10 @@ public class CdiSpringExtension implements Extension {
 
     @Override
     public Object create(CreationalContext<Object> ctx) {
-      Object configuration;
-      try {
-        // TODO dynamic subclass
-        configuration = configurationClass.getConstructor().newInstance();
-      } catch (ReflectiveOperationException | IllegalArgumentException e) {
-        throw new CreationException("could not invoke default constructor on: " + configurationClass, e);
-      }
-      autowire(configuration, ctx, bm);
-      it.inject(configuration, ctx);
-      it.postConstruct(configuration);
-      return configuration;
+      autowire(this.configuration, ctx, bm);
+      it.inject(this.configuration, ctx);
+      it.postConstruct(this.configuration);
+      return this.configuration;
     }
 
     @Override
