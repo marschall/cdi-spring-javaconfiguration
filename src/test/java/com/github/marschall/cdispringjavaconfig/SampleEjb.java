@@ -5,7 +5,7 @@ import javax.ejb.Singleton;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Singleton
-@ConfigurationClass(SampleConfiguration.class)
+@ConfigurationClasses(SampleConfiguration.class)
 public class SampleEjb {
   
   @Autowired

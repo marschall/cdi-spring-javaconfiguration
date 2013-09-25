@@ -27,6 +27,9 @@ You have a large EAR with several EJB-JARs and want to avoid having to create an
 ### What should I use instead?
 WAR deployment
 
+### Why a custom class loader?
+Spring calls `#defineClass` (via reflection) on the class loader of the configuration class. Besides being "not nice" this has the disadvantage that the `.class` resource is no longer available.
+=======
 ### There is a class checked in
 Yes, this is used for byte code reverse engineering.
 

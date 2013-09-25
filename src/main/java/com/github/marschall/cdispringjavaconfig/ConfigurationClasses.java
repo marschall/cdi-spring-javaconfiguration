@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
-public @interface ConfigurationClass {
+public @interface ConfigurationClasses {
 
   /**
    * Returns the spring configuration class (annotated with

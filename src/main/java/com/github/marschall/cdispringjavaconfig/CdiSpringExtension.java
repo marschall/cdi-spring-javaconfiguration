@@ -74,9 +74,9 @@ public class CdiSpringExtension implements Extension {
 
   public void loadConfiguration(@Observes ProcessAnnotatedType<?> pat, BeanManager beanManager) {
     AnnotatedType<?> annotatedType = pat.getAnnotatedType();
-    ConfigurationClass configurationClassAnnotation = annotatedType.getAnnotation(ConfigurationClass.class);
+    ConfigurationClasses configurationClassAnnotation = annotatedType.getAnnotation(ConfigurationClasses.class);
     if (configurationClassAnnotation == null) {
-      // not an EJB with @ConfigurationClass -> we don't care
+      // not an EJB with @ConfigurationClasses -> we don't care
       return;
     }
     

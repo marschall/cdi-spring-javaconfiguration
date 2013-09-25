@@ -59,6 +59,11 @@
       <version>${spring.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.jboss.spec.javax.ejb</groupId>
+      <artifactId>jboss-ejb-api_3.1_spec</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <version>4.11</version>
@@ -79,6 +84,11 @@
     <dependency>
       <groupId>org.jboss.spec.javax.ejb</groupId>
       <artifactId>jboss-ejb-api_3.1_spec</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jboss.arquillian.junit</groupId>
+      <artifactId>arquillian-junit-container</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -184,6 +194,10 @@
           <version>2.4.1</version>
         </plugin>
         <plugin>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>2.16</version>
+        </plugin>
+        <plugin>
           <artifactId>maven-scm-plugin</artifactId>
           <version>1.8.1</version>
         </plugin>
@@ -224,6 +238,13 @@
         <version>3.0.2.Final</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <dependency>
+          <groupId>org.jboss.arquillian</groupId>
+          <artifactId>arquillian-bom</artifactId>
+          <version>1.1.1.Final</version>
+          <scope>import</scope>
+          <type>pom</type>
       </dependency>
     </dependencies>
   </dependencyManagement>

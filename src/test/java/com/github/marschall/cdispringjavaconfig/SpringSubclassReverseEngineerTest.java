@@ -2,6 +2,9 @@ package com.github.marschall.cdispringjavaconfig;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertTrue;
+
+import java.net.URL;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -20,9 +23,18 @@ public class SpringSubclassReverseEngineerTest {
   @Test
   public void classLoader() {
     assertNotNull(this.configuration);
+    
     assertNotSame(SampleConfiguration.class, this.configuration.getClass());
+    assertTrue(canLoadClassFile(SampleConfiguration.class));
+//    assertTrue(canLoadClassFile(this.configuration.getClass()));
 
 //    assertNotSame(SampleConfiguration.class.getClassLoader(), this.configuration.getClass().getClassLoader());
+  }
+  
+  boolean canLoadClassFile(Class<?> clazz) {
+    String fileName = clazz.getName().replace('.', '/') + ".class";
+    URL resource = clazz.getClassLoader().getResource(fileName);
+    return resource != null;
   }
 
 
