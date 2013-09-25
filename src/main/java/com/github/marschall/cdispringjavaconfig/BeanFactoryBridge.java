@@ -22,10 +22,10 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 class BeanFactoryBridge implements BeanFactory {
 
   private final BeanManager beanManager;
-  // FIXME
-  private final CreationalContext context;
+  
+  private final CreationalContext<?> context;
 
-  BeanFactoryBridge(BeanManager beanManager, CreationalContext context) {
+  BeanFactoryBridge(BeanManager beanManager, CreationalContext<?> context) {
     this.beanManager = beanManager;
     this.context = context;
   }
@@ -61,24 +61,28 @@ class BeanFactoryBridge implements BeanFactory {
   }
 
   private Object getSingleSpringBean(String name, Set<Bean<?>> beans) {
-    Bean<Object> cdiBean = (Bean<Object>) this.getSingleCdiBean(name, beans);
-    return cdiBean.create(this.context);
+    Bean<?> cdiBean = this.getSingleCdiBean(name, beans);
+    // TODO better way? check size?
+    Type type = cdiBean.getTypes().iterator().next();
+    return this.beanManager.getReference(cdiBean, type, context);
   }
 
   private Object getSingleSpringBean(Set<Bean<?>> beans, Class<?> requiredType) {
-    Bean bean = this.getSingleCdiBean(requiredType, beans);
-    return bean.create(this.context);
+    Bean<?> bean = this.getSingleCdiBean(requiredType, beans);
+    return this.beanManager.getReference(bean, requiredType, context);
   }
 
   @Override
   public <T> T getBean(String name, Class<T> requiredType) throws BeansException {
-    // TODO requiredType instead of name?
-    return (T) this.getSingleSpringBean(this.beanManager.getBeans(name), requiredType);
+    // TODO name instead of requiredType?
+    Object springBean = this.getSingleSpringBean(this.beanManager.getBeans(requiredType), requiredType);
+    return requiredType.cast(springBean);
   }
 
   @Override
   public <T> T getBean(Class<T> requiredType) throws BeansException {
-    return (T) this.getSingleSpringBean(this.beanManager.getBeans(requiredType), requiredType);
+    Object springBean = this.getSingleSpringBean(this.beanManager.getBeans(requiredType), requiredType);
+    return requiredType.cast(springBean);
   }
 
   @Override
