@@ -26,12 +26,11 @@ public class SampleEjbTest {
         .addClass(Pojo.class)
     /* .addAsManifestResource(EmptyAsset.INSTANCE, "beans.xml") */;
     JavaArchive libraryJar = ShrinkWrap.create(JavaArchive.class)
-        // add src/main/java
-        // add src/main/resources
-        ;
+        // src/main/java and src/main/resources both end up there
+        .addAsDirectory("target/classes");
     return ShrinkWrap.create(EnterpriseArchive.class)
       .addAsModule(ejbJar)
-      /* libaryJar -> lib */
+      .addAsLibrary(libraryJar)
       /* spring-beans -> lib */
       /* spring-context -> lib */
       /* asm -> lib */
