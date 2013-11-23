@@ -86,10 +86,12 @@ public class CdiSpringExtension implements Extension {
   }
 
   public void afterBeanDiscovery(@Observes AfterBeanDiscovery abd, BeanManager bm) {
-    this.buildProxySubclasses();
+    Map<ClassLoader, Set<Class<?>>> proxySubclasses = this.buildProxySubclasses();
+    Map<Class<?>, ?> configurationObjects = this.instantiate(proxySubclasses);
     
+    Set<Class<?>> alreadyProcessed = new HashSet<>(this.configurationClasses.size());
     for (Class<?> configurationClass : this.configurationClasses) {
-      this.buildConfiguraion(configurationClass, abd, bm);
+      this.buildConfiguraion(configurationClass, alreadyProcessed, abd, bm, configurationObjects);
     }
   }
   
@@ -163,23 +165,26 @@ public class CdiSpringExtension implements Extension {
     validateAnnotationNotPresent(configurationClass, Profile.class);
   }
 
-  private void buildConfiguraion(Class<?> configurationClass, AfterBeanDiscovery abd, BeanManager bm) {
+  private void buildConfiguraion(Class<?> configurationClass, Set<Class<?>> alreadyProcessed, AfterBeanDiscovery abd, BeanManager bm, Map<Class<?>, ?> configurationObjects) {
     Set<Bean<?>> configurations = bm.getBeans(configurationClass);
     if (!configurations.isEmpty()) {
       // configuration already registered
       return;
     }
+    if (alreadyProcessed.contains(configurationClass)) {
+      return;
+    }
+    alreadyProcessed.add(configurationClass);
     
     Import importAnnotation = configurationClass.getAnnotation(Import.class);
     // TODO add to configuration classes, attention we're iterating over it
     for (Class<?> importedClass : importAnnotation.value()) {
-      buildConfiguraion(importedClass, abd, bm);
+      buildConfiguraion(importedClass, alreadyProcessed, abd, bm, configurationObjects);
     }
 
     // TODO cache
     List<Method> beanMethods = this.getBeanMethods(configurationClass);
-    abd.addBean(buildConfigurationBean(bm, configurationClass, it));
-
+    abd.addBean(buildConfigurationBean(bm, configurationClass, configurationObjects));
     addBeanMethods(configurationClass, beanMethods, abd, bm);
   }
 
@@ -570,11 +575,11 @@ public class CdiSpringExtension implements Extension {
     }
   }
 
-  private Bean<Object> buildConfigurationBean(BeanManager bm, Class<?> configurationClass) {
+  private Bean<Object> buildConfigurationBean(BeanManager bm, Class<?> configurationClass, Map<Class<?>, ?> configurationObjects) {
     AnnotatedType<?> at = bm.createAnnotatedType(configurationClass);
     //use this to instantiate the class and inject dependencies
     InjectionTarget<Object> it = (InjectionTarget<Object>) bm.createInjectionTarget(at);
-    return new ConfigurationBean(bm, it, configurationClass);
+    return new ConfigurationBean(bm, it, configurationObjects.get(configurationClass), configurationClass);
   }
   
   private static void autowire(Object springBean, CreationalContext<Object> ctx, BeanManager bm) {
